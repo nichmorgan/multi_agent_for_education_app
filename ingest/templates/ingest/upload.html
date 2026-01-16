@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block title %}Upload Course Material{% endblock %}
+
+{% block content %}
+<div class="hero bg-base-100 rounded-box shadow-xl p-10 max-w-2xl mx-auto mt-10">
+    <div class="hero-content text-center w-full">
+        <div class="max-w-md w-full">
+            <h1 class="text-4xl font-bold mb-6">Upload Material</h1>
+            <p class="py-6 text-gray-500">Upload PDF or PPTX files to generate the knowledge graph.</p>
+
+            <form method="post" enctype="multipart/form-data" class="form-control w-full space-y-6" x-data="{ uploading: false }" @submit="uploading = true">
+                {% csrf_token %}
+                
+                <div class="w-full">
+                    <label class="label">
+                        <span class="label-text">Select File</span>
+                    </label>
+                    <input type="file" name="file" class="file-input file-input-bordered file-input-primary w-full" accept=".pdf,.pptx" required />
+                </div>
+
+                <button type="submit" class="btn btn-primary w-full" :disabled="uploading">
+                    <span x-show="!uploading">Start Processing</span>
+                    <span x-show="uploading" class="loading loading-spinner"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

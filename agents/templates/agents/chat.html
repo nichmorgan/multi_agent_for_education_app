@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Agent Chat{% endblock %}
+
+{% block content %}
+<div class="flex flex-col h-[calc(100vh-80px)] container mx-auto" x-data="chatApp()">
+    
+    <!-- Chat History -->
+    {% csrf_token %}
+    <div class="flex-1 overflow-y-auto p-4 space-y-4 bg-base-100 rounded-box shadow-lg border border-base-200 mb-4" id="chat-scroller">
+        
+        <template x-for="msg in messages" :key="msg.id">
+            <div class="chat" :class="msg.sender === 'user' ? 'chat-end' : 'chat-start'">
+                <div class="chat-image avatar">
+                    <div class="w-10 rounded-full">
+                        <img :src="msg.sender === 'user' ? 'https://ui-avatars.com/api/?name=User' : 'https://ui-avatars.com/api/?name=Agent'" />
+                    </div>
+                </div>
+                <div class="chat-header">
+                    <span x-text="msg.sender === 'user' ? 'You' : 'Agent'"></span>
+                    <time class="text-xs opacity-50">Just now</time>
+                </div>
+                <div class="chat-bubble" :class="msg.sender === 'user' ? 'chat-bubble-primary' : 'chat-bubble-secondary'" x-text="msg.text"></div>
+            </div>
+        </template>
+        
+        <div class="chat chat-start" x-show="loading">
+             <div class="chat-bubble chat-bubble-secondary animate-pulse">Thinking...</div>
+        </div>
+
+    </div>
+
+    <!-- Input Area -->
+    <div class="form-control w-full">
+        <div class="input-group flex gap-2">
+            <input type="text" placeholder="Ask a question..." class="input input-bordered w-full flex-1" 
+                   x-model="newMessage" @keydown.enter="sendMessage()" />
+            <button class="btn btn-primary" @click="sendMessage()" :disabled="loading || !newMessage">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('chatApp', () => ({
+        messages: [
+            { id: 1, sender: 'agent', text: 'Hello! I am your education assistant. Ask me anything about the content provided.' }
+        ],
+        newMessage: '',
+        loading: false,
+
+        sendMessage() {
+            if (!this.newMessage.trim()) return;
+
+            // User Message
+            const userMsg = { id: Date.now(), sender: 'user', text: this.newMessage };
+            this.messages.push(userMsg);
+            const messageToSend = this.newMessage;
+            this.newMessage = '';
+            this.scrollToBottom();
+
+            this.loading = true;
+
+            // API Call
+            fetch("/agents/api/message/", {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]')?.value 
+                },
+                body: JSON.stringify({ message: messageToSend })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const agentMsg = { id: Date.now() + 1, sender: 'agent', text: data.response || "Error getting response." };
+                this.messages.push(agentMsg);
+                this.scrollToBottom();
+            })
+            .catch(err => {
+                this.messages.push({ id: Date.now() + 1, sender: 'agent', text: "Error: " + err });
+            })
+            .finally(() => {
+                this.loading = false;
+                this.scrollToBottom();
+            });
+        },
+
+        scrollToBottom() {
+            setTimeout(() => {
+                const scroller = document.getElementById('chat-scroller');
+                scroller.scrollTop = scroller.scrollHeight;
+            }, 50);
+        }
+    }));
+});
+</script>
+{% endblock %}

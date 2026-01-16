@@ -1,0 +1,292 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Knowledge Graph{% endblock %}
+
+{% block extra_head %}
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+    /* D3 Specific Styles - kept minimal, relying on daisy variables where possible */
+    .link { stroke: #5A7863; stroke-opacity: 0.6; marker-end: url(#arrow); }
+    .edge-label { fill: #ccc; font-size: 10px; pointer-events: none; text-anchor: middle; }
+    .node text { fill: currentColor; font-size: 12px; pointer-events: none; }
+    .node circle { cursor: pointer; transition: all 0.2s; }
+    .node circle:hover { stroke: white; stroke-width: 2px; }
+    
+    /* Full screen graph container */
+    #graph-container {
+        width: 100%;
+        height: calc(100vh - 64px); /* Adjust for navbar */
+        position: relative;
+        background: #FCF9EA;
+        overflow: hidden;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="drawer drawer-end h-[calc(100vh-80px)]" x-data="graphApp()">
+  <input id="meta-drawer" type="checkbox" class="drawer-toggle" />
+  
+  <div class="drawer-content relative">
+    <!-- Graph Container -->
+    <div id="graph-container" class="rounded-box shadow-lg border border-base-300">
+        <svg id="main-svg" width="100%" height="100%"></svg>
+        
+        <!-- Graph Controls Overlay -->
+        <div class="absolute bottom-4 left-4 flex gap-2">
+             <button class="btn btn-sm btn-success" @click="openAddModal()">+ Add Node</button>
+             <button class="btn btn-sm btn-error" @click="openDeleteModal()">- Delete Node</button>
+        </div>
+    </div>
+  </div> 
+  
+  <!-- Sidebar (Meta Panel) -->
+  <div class="drawer-side z-20">
+    <label for="meta-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+    <div class="menu p-4 w-96 min-h-full bg-base-200 text-base-content flex flex-col">
+      <h2 class="text-2xl font-bold mb-4" x-text="selectedNode.name || selectedNode.id || 'Node Details'">Node Details</h2>
+      
+      <!-- Node Attributes Form -->
+      <div class="flex-1 overflow-y-auto space-y-4" id="meta-content">
+          <!-- Dynamic Content Injected via Alpine/JS logic -->
+          <template x-for="(value, key) in editableProps" :key="key">
+            <div class="form-control">
+                <label class="label">
+                    <span class="label-text capitalize" x-text="key"></span>
+                </label>
+                <input type="text" x-model="selectedNode[key]" class="input input-bordered w-full" />
+            </div>
+          </template>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-2">
+          <button class="btn btn-outline btn-sm" @click="addAttribute()">+ Add Attribute</button>
+          <button class="btn btn-primary" @click="saveNode()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Node Modal -->
+  <dialog id="add_node_modal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Add Node</h3>
+      <div class="py-4 space-y-4">
+          <select class="select select-bordered w-full" x-model="newNode.type">
+            <option value="C">Concept</option>
+            <option value="P">Procedure</option>
+            <option value="A">Assessment</option>
+          </select>
+          <input type="text" placeholder="From (Node ID)" class="input input-bordered w-full" x-model="newNode.from" />
+          <input type="text" placeholder="To (Node Name)" class="input input-bordered w-full" x-model="newNode.to" />
+      </div>
+      <div class="modal-action">
+        <form method="dialog">
+          <button class="btn">Cancel</button>
+          <button class="btn btn-primary" @click="addNodeConfirm()">Add</button>
+        </form>
+      </div>
+    </div>
+  </dialog>
+
+</div>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('graphApp', () => ({
+        selectedNode: {},
+        editableProps: {},
+        newNode: { type: 'C', from: '', to: '' },
+        
+        init() {
+           this.initGraph();
+        },
+        
+        openAddModal() {
+            document.getElementById('add_node_modal').showModal();
+        },
+
+        addNodeConfirm() {
+             alert(`(Simulated) Added new ${this.newNode.type} node "${this.newNode.to}" from "${this.newNode.from}".`);
+             // In real app, call backend here
+        },
+
+        openDeleteModal() {
+             alert("Delete functionality implementation pending backend support.");
+        },
+
+        updateEditableProps() {
+             // Filter internal D3/Neo4j props
+             const ignored = ["id","children","x","y","vx","vy","fx","fy","index","expanded"];
+             this.editableProps = Object.fromEntries(
+                Object.entries(this.selectedNode).filter(([key]) => !ignored.includes(key))
+             );
+        },
+        
+        addAttribute() {
+            const key = prompt("Enter new attribute name:");
+            if(key) {
+                this.selectedNode[key] = "";
+                this.updateEditableProps();
+            }
+        },
+
+        saveNode() {
+             fetch("/knowledge/update_node/", { // Note the trailing slash if django expects it
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(this.selectedNode)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if(data.status === "updated") alert("✅ Node updated in Neo4j!");
+                else alert("⚠️ Update failed: " + JSON.stringify(data));
+            })
+            .catch(err => alert("❌ " + err));
+        },
+
+        initGraph() {
+            // D3 Logic wrapped here
+            const self = this; // access Alpine scope
+            const width = document.getElementById('graph-container').clientWidth;
+            const height = document.getElementById('graph-container').clientHeight;
+            
+            d3.json("/knowledge/graph-root/").then(function(root) {
+                  const svg = d3.select("#main-svg");
+                  // Ensure SVG tracks container size
+                  svg.attr("width", width).attr("height", height);
+                  
+                  const color=d3.scaleOrdinal().domain(["C","P","A"]).range(["#FFD966","#6FA8DC","#93C47D"]);
+
+                  let nodes=[],links=[];
+                  nodes.push(root);
+                  if(root.children){
+                    root.children.filter(d=>d.id && d.id.startsWith("C")).forEach(c=>{
+                      nodes.push(c);
+                      links.push({source:root.id,target:c.id,relation:"HAS_CONCEPT"});
+                    });
+                  }
+
+                  const simulation=d3.forceSimulation(nodes)
+                    .force("link",d3.forceLink(links).id(d=>d.id).distance(180).strength(1))
+                    .force("charge",d3.forceManyBody().strength(-600))
+                    .force("center",d3.forceCenter(width/2,height/2))
+                    .force("collision",d3.forceCollide().radius(d=>d.id.startsWith("C")?45:30).strength(0.8));
+
+                  // Arrows
+                  svg.append("defs").append("marker")
+                    .attr("id","arrow").attr("viewBox","0 -5 10 10")
+                    .attr("refX",22).attr("refY",0)
+                    .attr("markerWidth",6).attr("markerHeight",6)
+                    .attr("orient","auto")
+                    .append("path").attr("d","M0,-5L10,0L0,5").attr("fill","#aaa");
+
+                  const linkGroup=svg.append("g").attr("class","links");
+                  const labelGroup=svg.append("g").attr("class","labels");
+                  const nodeGroup=svg.append("g").attr("class","nodes");
+                  
+                  let link=linkGroup.selectAll("line");
+                  let edgeLabel=labelGroup.selectAll(".edge-label");
+                  let node=nodeGroup.selectAll(".node");
+
+                  function update(){
+                    link=link.data(links,d=>`${d.source.id||d.source}-${d.target.id||d.target}`);
+                    link.exit().remove();
+                    const linkEnter=link.enter().append("line").attr("class","link").style("opacity",0);
+                    link=linkEnter.merge(link);
+                    linkEnter.transition().duration(1200).style("opacity",1);
+
+                    edgeLabel=edgeLabel.data(links,d=>`${d.source.id||d.source}-${d.target.id||d.target}`);
+                    edgeLabel.exit().remove();
+                    const labelEnter=edgeLabel.enter().append("text").attr("class","edge-label")
+                      .text(d=>d.relation||"").style("opacity",0);
+                    edgeLabel=labelEnter.merge(edgeLabel);
+                    labelEnter.transition().duration(1200).delay(600).style("opacity",1);
+
+                    node=node.data(nodes,d=>d.id);
+                    node.exit().remove();
+                    
+                    const nodeEnter=node.enter().append("g").attr("class","node")
+                      .call(d3.drag().on("start",dragstarted).on("drag",dragged).on("end",dragended));
+
+                    nodeEnter.append("circle")
+                      .attr("r",d=>d.id.startsWith("C")?25:d.id.startsWith("P")?15:10)
+                      .attr("fill",d=>color(d.id[0]))
+                      .style("opacity",0)
+                      .on("click",function(event,d){
+                        if(event.detail === 1){ 
+                          setTimeout(()=>{ if(event.detail === 1) expandNode(event,d); },200);
+                        }
+                      })
+                      .on("dblclick",function(event,d){ 
+                          self.selectedNode = d;
+                          self.updateEditableProps();
+                          document.getElementById('meta-drawer').checked = true;
+                      });
+
+                    nodeEnter.append("text").attr("x",8).attr("y",4)
+                      .text(d=>d.name||d.id).style("opacity",0);
+
+                    node=nodeEnter.merge(node);
+                    nodeEnter.select("circle").transition().duration(1500).delay((d,i)=>i*150).style("opacity",1);
+                    nodeEnter.select("text").transition().duration(1500).delay((d,i)=>i*150+400).style("opacity",1);
+
+                    simulation.nodes(nodes);
+                    simulation.force("link").links(links);
+                    simulation.alpha(0.3).restart();
+                  }
+
+                  function expandNode(event, d) {
+                    event.stopPropagation();
+                    if (d.expanded) return;
+                    d.expanded = true;
+
+                    fetch(`/knowledge/expand-node/${d.id}`)
+                      .then(res => res.json())
+                      .then(children => {
+                        if (!children || !children.length) return;
+
+                        const newNodes = children.filter(child => !nodes.find(n => n.id === child.id));
+                        newNodes.forEach(child => { child.x = d.x; child.y = d.y; });
+                        nodes.push(...newNodes);
+
+                        children.forEach(child => {
+                          let relType = "HAS_CHILD";
+                          if (child.id.startsWith("P")) relType = "PROCEDURAL_FOR";
+                          else if (child.id.startsWith("A")) relType = "ASSESSES";
+                          else if (child.id.startsWith("C")) relType = "HAS_CONCEPT";
+                          links.push({ source: d.id, target: child.id, relation: relType });
+                        });
+
+                        d.children = children;
+                        update();
+                      });
+                  }
+
+                  simulation.on("tick",()=>{
+                    link.attr("x1",d=>d.source.x)
+                        .attr("y1",d=>d.source.y)
+                        .attr("x2",d=>d.target.x)
+                        .attr("y2",d=>d.target.y);
+                    edgeLabel.attr("x",d=>(d.source.x+d.target.x)/2)
+                             .attr("y",d=>(d.source.y+d.target.y)/2);
+                    node.attr("transform",d=>`translate(${d.x},${d.y})`);
+                  });
+
+                  function dragstarted(event){
+                    if(!event.active)simulation.alphaTarget(0.3).restart();
+                    event.subject.fx=event.subject.x; event.subject.fy=event.subject.y;
+                  }
+                  function dragged(event){event.subject.fx=event.x; event.subject.fy=event.y;}
+                  function dragended(event){
+                    if(!event.active)simulation.alphaTarget(0);
+                    event.subject.fx=null; event.subject.fy=null;
+                  }
+
+                  update();
+            }); // end d3.json
+        }
+    }));
+});
+</script>
+{% endblock %}
