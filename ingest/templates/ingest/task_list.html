@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Ingestion Tasks</h1>
+    
+    <div class="mb-4">
+        <a href="{% url 'upload_file' %}" class="btn btn-primary">Upload New File</a>
+    </div>
+
+    <div class="overflow-x-auto">
+        <table class="table w-full">
+            <thead>
+                <tr>
+                    <th>File</th>
+                    <th>Status</th>
+                    <th>Step</th>
+                    <th>Created At</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in tasks %}
+                <tr>
+                    <td>{{ task.file_name }}</td>
+                    <td>
+                        {% if task.status == 'PENDING' %}
+                            <span class="badge badge-warning">Pending</span>
+                        {% elif task.status == 'PROCESSING' %}
+                            <span class="badge badge-info">Processing</span>
+                        {% elif task.status == 'COMPLETED' %}
+                            <span class="badge badge-success">Completed</span>
+                        {% elif task.status == 'FAILED' %}
+                            <span class="badge badge-error">Failed</span>
+                        {% elif task.status == 'CANCELLED' %}
+                            <span class="badge badge-ghost">Cancelled</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ task.get_step_display }}</td>
+                    <td>{{ task.created_at|date:"Y-m-d H:i:s" }}</td>
+                    <td>
+                        {% if task.status == 'PENDING' or task.status == 'PROCESSING' %}
+                        <form action="{% url 'cancel_task' task.id %}" method="post" class="inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-error btn-xs">Cancel</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center">No tasks found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
