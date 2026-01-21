@@ -14,37 +14,44 @@
                 <tr>
                     <th>File</th>
                     <th>Status</th>
-                    <th>Step</th>
+                    <th>Progress</th>
                     <th>Created At</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% for task in tasks %}
-                <tr>
+                <tr x-data="taskProgress({{ task.id }}, '{{ task.status }}', '{{ task.step }}')">
                     <td>{{ task.file_name }}</td>
-                    <td>
-                        {% if task.status == 'PENDING' %}
-                            <span class="badge badge-warning">Pending</span>
-                        {% elif task.status == 'PROCESSING' %}
-                            <span class="badge badge-info">Processing</span>
-                        {% elif task.status == 'COMPLETED' %}
-                            <span class="badge badge-success">Completed</span>
-                        {% elif task.status == 'FAILED' %}
-                            <span class="badge badge-error">Failed</span>
-                        {% elif task.status == 'CANCELLED' %}
-                            <span class="badge badge-ghost">Cancelled</span>
-                        {% endif %}
+                    <td class="flex items-center gap-2">
+                        <span class="badge" 
+                              :class="'badge-' + (statusColors[status] || 'ghost')" 
+                              x-text="status.charAt(0).toUpperCase() + status.slice(1)">
+                            {{ task.get_status_display }}
+                        </span>
+                        
+                        <!-- Loading Spinner for active states -->
+                        <template x-if="activeStatuses.includes(status)">
+                            <span class="loading loading-spinner loading-xs text-info"></span>
+                        </template>
                     </td>
-                    <td>{{ task.get_step_display }}</td>
+                    <td>
+                        <!-- Current Step Text Display -->
+                        <span x-text="step.charAt(0).toUpperCase() + step.slice(1)" class="font-mono text-sm">
+                            {{ task.get_step_display }}
+                        </span>
+                    </td>
                     <td>{{ task.created_at|date:"Y-m-d H:i:s" }}</td>
                     <td>
-                        {% if task.status == 'PENDING' or task.status == 'PROCESSING' %}
-                        <form action="{% url 'cancel_task' task.id %}" method="post" class="inline">
-                            {% csrf_token %}
-                            <button type="submit" class="btn btn-error btn-xs">Cancel</button>
-                        </form>
-                        {% endif %}
+                        <div class="flex gap-2">
+                            <a href="{% url 'task_detail' task.id %}" class="btn btn-xs btn-ghost">View</a>
+                            <template x-if="activeStatuses.includes(status)">
+                                <form action="{% url 'cancel_task' task.id %}" method="post" class="inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-error btn-xs">Cancel</button>
+                                </form>
+                            </template>
+                        </div>
                     </td>
                 </tr>
                 {% empty %}
@@ -56,4 +63,59 @@
         </table>
     </div>
 </div>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        // Pass configuration
+        const statusColors = {{ status_colors|safe }};
+        const activeStatuses = {{ active_statuses|safe }};
+
+        Alpine.data('taskProgress', (taskId, initialStatus, initialStep) => ({
+            status: initialStatus.toLowerCase(),
+            step: initialStep.toLowerCase(),
+            statusColors: statusColors,
+            activeStatuses: activeStatuses,
+            eventSource: null,
+
+            init() {
+                if (this.activeStatuses.includes(this.status)) {
+                    this.connect();
+                }
+            },
+
+            connect() {
+                if (this.eventSource) return;
+                console.log(`Connecting SSE for task ${taskId}`);
+                this.eventSource = new EventSource(`/ingest/tasks/${taskId}/progress/`);
+                
+                this.eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    if (data.error) {
+                         this.disconnect();
+                         return;
+                    }
+
+                    this.status = data.status.toLowerCase();
+                    this.step = data.step.toLowerCase();
+                    
+                    if (!this.activeStatuses.includes(this.status)) {
+                        this.disconnect();
+                    }
+                };
+
+                this.eventSource.onerror = (err) => {
+                    console.error('SSE Error:', err);
+                    this.disconnect();
+                };
+            },
+
+            disconnect() {
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+            },
+        }))
+    })
+</script>
 {% endblock %}
