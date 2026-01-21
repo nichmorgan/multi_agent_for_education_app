@@ -81,3 +81,27 @@ You need to run two processes: the Django development server and the Huey task c
     ```bash
     python manage.py djangohuey
     ```
+
+## Development Commands (Makefile)
+
+A `Makefile` is included to simplify common development tasks. You can use these shorthand commands instead of typing out the full `python manage.py ...` commands.
+
+| Command | Description | Equivalent |
+| :--- | :--- | :--- |
+| `make install` | Install dependencies | `uv sync` |
+| `make run` | Start Django development server | `python manage.py runserver` |
+| `make huey` | Start Huey task consumer | `python manage.py djangohuey` |
+| `make migrate` | Apply database migrations | `python manage.py migrate` |
+| `make migrations` | Create new migrations | `python manage.py makemigrations` |
+| `make shell` | Open Django shell | `python manage.py shell` |
+| `make fmt` | Format code with isort and black | `uv run isort . && uv run black .` |
+
+Example usage:
+```bash
+make run
+```
+
+To run huey with more workers:
+```bash
+make huey workers=4
+```

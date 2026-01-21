@@ -1,7 +1,8 @@
 import json
-from neo4j import GraphDatabase
+from typing import Any, Dict, List, Union
+
 from django.conf import settings
-from typing import Dict, Any, List, Union
+from neo4j import GraphDatabase
 
 # Initialize driver
 driver = GraphDatabase.driver(

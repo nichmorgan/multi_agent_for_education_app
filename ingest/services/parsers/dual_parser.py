@@ -1,16 +1,19 @@
-from pathlib import Path
-import os, io, json
+import hashlib
+import io
+import json
 import logging
-from typing import List, Dict, Any, Union
+import os
+from pathlib import Path
+from typing import Any, Dict, List, Union
+
 import fitz  # PyMuPDF
 import pytesseract
-from PIL import Image
 from bs4 import BeautifulSoup
-from pptx import Presentation
-from google import genai
 from django.conf import settings
+from google import genai
+from PIL import Image
+from pptx import Presentation
 from retry import retry
-import hashlib
 
 # Configure logging
 logger = logging.getLogger(__name__)

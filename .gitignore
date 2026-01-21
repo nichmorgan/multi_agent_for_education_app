@@ -17,3 +17,6 @@ wheels/
 
 # Media files
 media/uploads/*
+
+# Temporary files
+data/

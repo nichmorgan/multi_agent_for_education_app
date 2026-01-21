@@ -12,10 +12,6 @@ dependencies = [
     "django-neomodel>=0.2.0",
     "fitz>=0.0.1.dev2",
     "google-genai>=1.59.0",
-    "langchain>=1.2.4",
-    "langchain-community>=0.4.1",
-    "langchain-core>=1.2.7",
-    "langchain-openai>=1.1.7",
     "neo4j>=5.19.0",
     "opencv-python>=4.12.0.88",
     "pillow>=12.1.0",
@@ -27,6 +23,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "black>=25.12.0",
-]
+dev = ["black>=25.12.0", "isort>=7.0.0"]
+
+[tool.black]
+# Exclude 'repositories' folder and 'migrations' directories
+extend-exclude = "repositories|migrations|\\.venv"
+
+[tool.isort]
+profile = "black"
+skip = ["repositories", ".venv"]
+skip_glob = ["**/migrations/*"]

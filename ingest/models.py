@@ -1,22 +1,37 @@
 from django.db import models
-from .enums import Status, Step
-from utils import enum_to_choices
+from django.utils.translation import gettext_lazy as _
+
 
 class IngestionTask(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", _("Pending")
+        PROCESSING = "processing", _("Processing")
+        COMPLETED = "completed", _("Completed")
+        FAILED = "failed", _("Failed")
+        CANCELLED = "cancelled", _("Cancelled")
+
+    class Step(models.TextChoices):
+        QUEUED = "queued", _("Queued")
+        PARSING = "parsing", _("Parsing")
+        UPLOADING = "uploading", _("Uploading")
+        DONE = "done", _("Done")
+
     file_name = models.CharField(max_length=255)
     status = models.CharField(
         max_length=20,
-        choices=enum_to_choices(Status),
+        choices=Status.choices,
         default=Status.PENDING,
     )
     step = models.CharField(
         max_length=20,
-        choices=enum_to_choices(Step),
+        choices=Step.choices,
         default=Step.QUEUED,
     )
-    task_id = models.CharField(max_length=255, blank=True, null=True)  # Huey task ID (uuid)
+    task_id = models.CharField(
+        max_length=255, blank=True, null=True
+    )  # Huey task ID (uuid)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+
     def __str__(self):
         return f"{self.file_name} ({self.status})"

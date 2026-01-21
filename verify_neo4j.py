@@ -1,5 +1,6 @@
 import os
 import sys
+
 import django
 from neo4j import GraphDatabase
 

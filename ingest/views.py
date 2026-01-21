@@ -1,12 +1,13 @@
-from django.shortcuts import render, redirect
-from django.core.files.storage import FileSystemStorage
+import os
+
 from django.conf import settings
 from django.contrib import messages
-import os
-from ingest.tasks import process_upload
-
+from django.core.files.storage import FileSystemStorage
+from django.shortcuts import redirect, render
 
 from ingest.models import IngestionTask
+from ingest.tasks import process_upload
+
 
 def upload_file(request):
     if request.method == "POST" and request.FILES["file"]:
@@ -44,7 +45,10 @@ def cancel_task(request, task_id):
     if request.method == "POST":
         try:
             task = IngestionTask.objects.get(id=task_id)
-            if task.status in [IngestionTask.Status.PENDING, IngestionTask.Status.PROCESSING]:
+            if task.status in [
+                IngestionTask.Status.PENDING,
+                IngestionTask.Status.PROCESSING,
+            ]:
                 task.status = IngestionTask.Status.CANCELLED
                 task.save()
                 messages.success(request, f"Task {task.file_name} cancelled.")
